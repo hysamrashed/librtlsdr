@@ -6,6 +6,8 @@ if(NOT LIBUSB_FOUND)
     /usr/include/libusb-1.0
     /usr/include
     /usr/local/include
+	C:/Qt/5.8/mingw53_32/include
+    C:/Qt/5.8/mingw53_32/include/libusb-1.0
   )
 
 #standard library name for libusb-1.0

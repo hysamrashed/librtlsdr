@@ -63,7 +63,11 @@ endif()
 find_package(PkgConfig)
 find_package(LibUSB)
 set(THREADS_USE_PTHREADS_WIN32 true)
-find_package(Threads)
+#find_package(Threads)
+SET(CMAKE_THREAD_LIBS_INIT "-lpthread")
+SET(CMAKE_HAVE_THREADS_LIBRARY 1)
+SET(THREADS_FOUND TRUE)
+
 
 if(NOT LIBUSB_FOUND)
     message(FATAL_ERROR "LibUSB 1.0 required to compile rtl-sdr")
