@@ -97,18 +97,20 @@ static int mxl5007t_write_reg(void *dev, uint8_t reg, const uint8_t val)
 	return rc;
 }
 
-static int mxl5007t_read_reg(void *dev, uint8_t reg, const uint8_t *val)
+static int mxl5007t_read_reg(void *dev, uint8_t reg, uint8_t *val)
 {
 	int rc = 0;
 	uint8_t buf[2];
 	buf[0] = 0xFB;
 	buf[1] = reg;
+	uint8_t data = 0;
 
 	rc = rtlsdr_i2c_write_fn(dev, MXL5007T_I2C_ADDR, buf, 2);
 	if (rc < 2)
 		return -1;
 	
-	rc = rtlsdr_i2c_read_fn(dev, MXL5007T_I2C_ADDR, &*val, 1);
+	rc = rtlsdr_i2c_read_fn(dev, MXL5007T_I2C_ADDR, &data, 1);
+	*val = data;
 	return rc;
 }
 
@@ -252,12 +254,12 @@ int mxl5007t_set_freq(void *dev, uint32_t freq)
 	lock_ref = lock & 0x03;
 	lock_rf = lock & 0x0c;
 	
-	if (lock_ref)
+	if (lock_ref == 0x03)
 		fprintf(stderr, "MxL5007T: REF locked\n");
 	else
 		fprintf(stderr, "MxL5007T: REF NOT locked\n");
 	
-	if (lock_rf)
+	if (lock_rf == 0x0c)
 		fprintf(stderr, "MxL5007T: RF locked\n");
 	else
 		fprintf(stderr, "MxL5007T: RF NOT locked\n");
