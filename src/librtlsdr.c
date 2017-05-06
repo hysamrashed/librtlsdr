@@ -54,6 +54,7 @@
 #include "tuner_fc0013.h"
 #include "tuner_fc2580.h"
 #include "tuner_r82xx.h"
+#include "tuner_mxl5007t.h"
 
 typedef struct rtlsdr_tuner_iface {
 	/* tuner interface */
@@ -263,6 +264,19 @@ int r820t_set_gain_mode(void *dev, int manual) {
 	return r82xx_set_gain(&devt->r82xx_p, manual, 0);
 }
 
+int mxl5007t_l_init(void *dev) {
+	//rtlsdr_set_if_freq(dev, 4570000);
+	return mxl5007t_init(dev);
+}
+
+int mxl5007t_l_set_freq(void *dev, uint32_t freq) {
+	return mxl5007t_set_freq(dev, freq);
+}
+
+int mxl5007t_l_exit(void *dev) {
+	return mxl5007t_standby(dev);
+}
+
 /* definition order must match enum rtlsdr_tuner */
 static rtlsdr_tuner_iface_t tuners[] = {
 	{
@@ -297,6 +311,11 @@ static rtlsdr_tuner_iface_t tuners[] = {
 		r820t_init, r820t_exit,
 		r820t_set_freq, r820t_set_bw, r820t_set_gain, NULL,
 		r820t_set_gain_mode
+	},
+	{
+		mxl5007t_l_init, mxl5007t_l_exit,
+		mxl5007t_l_set_freq, NULL, NULL, NULL,
+		NULL
 	},
 };
 
@@ -966,6 +985,7 @@ int rtlsdr_get_tuner_gains(rtlsdr_dev_t *dev, int *gains)
 				       63, 65, 67, 68, 70, 71, 179, 181, 182,
 				       184, 186, 188, 191, 197 };
 	const int fc2580_gains[] = { 0 /* no gain values */ };
+	const int mxl5007t_gains[] = { 0 /* no gain values */ };											 
 	const int r82xx_gains[] = { 0, 9, 14, 27, 37, 77, 87, 125, 144, 157,
 				     166, 197, 207, 229, 254, 280, 297, 328,
 				     338, 364, 372, 386, 402, 421, 434, 439,
@@ -995,9 +1015,12 @@ int rtlsdr_get_tuner_gains(rtlsdr_dev_t *dev, int *gains)
 	case RTLSDR_TUNER_R828D:
 		ptr = r82xx_gains; len = sizeof(r82xx_gains);
 		break;
+	case RTLSDR_TUNER_MXL5007T:
+		ptr = mxl5007t_gains; len = sizeof(mxl5007t_gains);
+		break;
 	default:
 		ptr = unknown_gains; len = sizeof(unknown_gains);
-		break;
+
 	}
 
 	if (!gains) { /* no buffer provided, just return the count */
@@ -1206,6 +1229,8 @@ int rtlsdr_set_direct_sampling(rtlsdr_dev_t *dev, int on)
 
 			/* enable spectrum inversion */
 			r |= rtlsdr_demod_write_reg(dev, 1, 0x15, 0x01, 1);
+		} else if (dev->tuner_type == RTLSDR_TUNER_MXL5007T) {
+			r |= rtlsdr_set_if_freq(dev, 4570000);
 		} else {
 			r |= rtlsdr_set_if_freq(dev, 0);
 
@@ -1245,7 +1270,8 @@ int rtlsdr_set_offset_tuning(rtlsdr_dev_t *dev, int on)
 		return -1;
 
 	if ((dev->tuner_type == RTLSDR_TUNER_R820T) ||
-	    (dev->tuner_type == RTLSDR_TUNER_R828D))
+	    (dev->tuner_type == RTLSDR_TUNER_R828D) ||
+		(dev->tuner_type == RTLSDR_TUNER_MXL5007T))
 		return -2;
 
 	if (dev->direct_sampling)
@@ -1446,6 +1472,8 @@ int rtlsdr_open(rtlsdr_dev_t **out_dev, uint32_t index)
 	struct libusb_device_descriptor dd;
 	uint8_t reg;
 	ssize_t cnt;
+	uint8_t mxl_data[2];
+	uint8_t mxl_id = 0;
 
 	dev = malloc(sizeof(rtlsdr_dev_t));
 	if (NULL == dev)
@@ -1563,6 +1591,16 @@ int rtlsdr_open(rtlsdr_dev_t **out_dev, uint32_t index)
 		dev->tuner_type = RTLSDR_TUNER_R828D;
 		goto found;
 	}
+	
+	/* MxL5007T check */
+	mxl_data[0] = 0xFB; // read register command
+	mxl_data[1] = MXL5007T_CHECK_REG; // register to read
+	rtlsdr_write_array(dev, IICB, MXL5007T_I2C_ADDR, mxl_data, 2);
+	rtlsdr_read_array(dev, IICB, MXL5007T_I2C_ADDR, &mxl_id, 1);
+	if (mxl5007t_print_version(mxl_id)) {
+		dev->tuner_type = RTLSDR_TUNER_MXL5007T;
+		goto found;
+	}
 
 	/* initialise GPIOs */
 	rtlsdr_set_gpio_output(dev, 5);
@@ -1607,6 +1645,15 @@ found:
 
 		/* enable spectrum inversion */
 		rtlsdr_demod_write_reg(dev, 1, 0x15, 0x01, 1);
+		break;
+	case RTLSDR_TUNER_MXL5007T:
+		/* disable Zero-IF mode */
+		rtlsdr_demod_write_reg(dev, 1, 0xb1, 0x1a, 1);
+
+		/* only enable In-phase ADC input */
+		rtlsdr_demod_write_reg(dev, 0, 0x08, 0x4d, 1);
+
+		rtlsdr_set_if_freq(dev, 4570000);
 		break;
 	case RTLSDR_TUNER_UNKNOWN:
 		fprintf(stderr, "No supported tuner found\n");
